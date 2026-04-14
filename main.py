@@ -31,36 +31,27 @@ async def extract_text(file: UploadFile):
 @app.post("/api/generate")
 async def generate_mindmap(file: UploadFile = File(...)):
     text_data = await extract_text(file)
-    if not text_data.strip(): return {"error": "File không có nội dung chữ hoặc định dạng không hỗ trợ."}
+    if not text_data.strip(): return {"error": "Không trích xuất được văn bản."}
 
-    # SỬ DỤNG CỔNG V1 CHÍNH THỨC (STABLE) - DÀNH CHO PAID TIER
-    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+    # SỬ DỤNG V1BETA CHO GEMINI 1.5 FLASH - ĐÂY LÀ ĐƯỜNG DẪN CHUẨN NHẤT HIỆN TẠI
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
     
     payload = {
-        "contents": [{
-            "parts": [{
-                "text": f"Bạn là VCA Smart Visualizer. Phân tích văn bản sau thành Mindmap Markdown chi tiết (#, ##, -). Trích xuất đủ số liệu tài chính: \n\n {text_data[:15000]}"
-            }]
-        }]
+        "contents": [{"parts": [{"text": f"Phân tích văn bản sau thành Mindmap Markdown chi tiết (#, ##, -): \n\n {text_data[:15000]}"}]}]
     }
 
     try:
-        response = requests.post(url, json=payload, timeout=60)
+        # Thêm Header để xác thực cho tài khoản Paid Tier
+        headers = {'Content-Type': 'application/json'}
+        response = requests.post(url, json=payload, headers=headers, timeout=60)
         res_data = response.json()
 
         if response.status_code == 200:
             markdown_out = res_data['candidates'][0]['content']['parts'][0]['text']
             return {"markdown": markdown_out.replace('```markdown', '').replace('```', '')}
         else:
-            # Nếu v1 vẫn lỗi, thử cổng v1beta như một phương án dự phòng cuối cùng
-            url_beta = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
-            response_beta = requests.post(url_beta, json=payload, timeout=60)
-            if response_beta.status_code == 200:
-                markdown_out = response_beta.json()['candidates'][0]['content']['parts'][0]['text']
-                return {"markdown": markdown_out.replace('```markdown', '').replace('```', '')}
-            
-            error_msg = res_data.get('error', {}).get('message', '404 Not Found')
-            return {"error": f"AI phản hồi: {error_msg} (Vui lòng kiểm tra lại API Key trong Cloud Console)"}
+            error_msg = res_data.get('error', {}).get('message', 'Lỗi không xác định')
+            return {"error": f"Google AI phản hồi: {error_msg}. Hãy đảm bảo đã chọn 'Don't restrict key' và cấp quyền IAM."}
             
     except Exception as e:
         return {"error": f"Lỗi kết nối: {str(e)}"}
