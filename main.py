@@ -15,8 +15,8 @@ app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 async def extract_text(file: UploadFile):
-    content = await file.read()
     try:
+        content = await file.read()
         ext = file.filename.split('.')[-1].lower()
         if ext == "txt": return content.decode('utf-8')
         elif ext == "pdf":
@@ -31,30 +31,40 @@ async def extract_text(file: UploadFile):
 @app.post("/api/generate")
 async def generate_mindmap(file: UploadFile = File(...)):
     text_data = await extract_text(file)
-    if not text_data.strip(): return {"error": "Không trích xuất được văn bản."}
+    if not text_data.strip(): return {"error": "Không đọc được file."}
 
-    # SỬ DỤNG V1BETA CHO GEMINI 1.5 FLASH - ĐÂY LÀ ĐƯỜNG DẪN CHUẨN NHẤT HIỆN TẠI
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
-    
+    # BƯỚC 1: HỎI GOOGLE XEM TÔI ĐƯỢC DÙNG MODEL NÀO?
+    list_url = f"https://generativelanguage.googleapis.com/v1beta/models?key={API_KEY}"
+    try:
+        models_res = requests.get(list_url).json()
+        # Tìm model Flash hoặc Pro trong danh sách Google trả về
+        available_models = [m['name'] for m in models_res.get('models', []) if 'generateContent' in m.get('supportedGenerationMethods', [])]
+        
+        if not available_models:
+            return {"error": "API Key của bạn không có quyền truy cập vào bất kỳ model nào. Hãy kiểm tra lại Billing."}
+
+        # Ưu tiên Flash, không thì lấy cái đầu tiên trong danh sách
+        chosen_model = next((m for m in available_models if "flash" in m), available_models[0])
+        
+    except Exception as e:
+        return {"error": f"Lỗi kiểm tra quyền: {str(e)}"}
+
+    # BƯỚC 2: GỌI ĐÚNG MODEL ĐÃ TÌM THẤY
+    gen_url = f"https://generativelanguage.googleapis.com/v1beta/{chosen_model}:generateContent?key={API_KEY}"
     payload = {
-        "contents": [{"parts": [{"text": f"Phân tích văn bản sau thành Mindmap Markdown chi tiết (#, ##, -): \n\n {text_data[:15000]}"}]}]
+        "contents": [{"parts": [{"text": f"Phân tích văn bản sau thành Mindmap Markdown: \n\n {text_data[:15000]}"}]}]
     }
 
     try:
-        # Thêm Header để xác thực cho tài khoản Paid Tier
-        headers = {'Content-Type': 'application/json'}
-        response = requests.post(url, json=payload, headers=headers, timeout=60)
+        response = requests.post(gen_url, json=payload, timeout=60)
         res_data = response.json()
-
         if response.status_code == 200:
             markdown_out = res_data['candidates'][0]['content']['parts'][0]['text']
-            return {"markdown": markdown_out.replace('```markdown', '').replace('```', '')}
+            return {"markdown": markdown_out}
         else:
-            error_msg = res_data.get('error', {}).get('message', 'Lỗi không xác định')
-            return {"error": f"Google AI phản hồi: {error_msg}. Hãy đảm bảo đã chọn 'Don't restrict key' và cấp quyền IAM."}
-            
+            return {"error": f"Google từ chối ({chosen_model}): {res_data.get('error', {}).get('message')}"}
     except Exception as e:
-        return {"error": f"Lỗi kết nối: {str(e)}"}
+        return {"error": str(e)}
 
 @app.get("/")
 async def serve_frontend():
