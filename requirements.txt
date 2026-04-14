@@ -3,5 +3,5 @@ uvicorn
 python-multipart
 pdfplumber
 python-docx
-google-generativeai>=0.5.4
+google-generativeai>=0.7.2
 python-dotenv
