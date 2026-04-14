@@ -1,34 +1,17 @@
 import os
 import io
-import logging
+import requests
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import pdfplumber
 import docx
-import google.generativeai as genai
 from dotenv import load_dotenv
-
-# Bật nhật ký để theo dõi lỗi trên Render Logs
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 load_dotenv()
 
+# Lấy API Key từ Environment Variables của Render
 API_KEY = os.getenv("GEMINI_API_KEY")
-
-if API_KEY:
-    try:
-        genai.configure(api_key=API_KEY)
-        # Kiểm tra xem API Key có nhìn thấy model nào không
-        logger.info("Đang kiểm tra danh sách model khả dụng...")
-        for m in genai.list_models():
-            logger.info(f"Model khả dụng: {m.name}")
-    except Exception as e:
-        logger.error(f"Lỗi cấu hình API: {str(e)}")
-
-# Khởi tạo model mặc định
-model = genai.GenerativeModel('gemini-1.5-flash')
 
 app = FastAPI()
 
@@ -55,7 +38,6 @@ async def extract_text(file: UploadFile):
             text = "\n".join([para.text for para in doc.paragraphs])
         return text
     except Exception as e:
-        logger.error(f"Lỗi đọc file: {str(e)}")
         return ""
 
 @app.post("/api/generate")
@@ -63,17 +45,31 @@ async def generate_mindmap(file: UploadFile = File(...)):
     try:
         text_data = await extract_text(file)
         if not text_data.strip():
-            return {"error": "Không trích xuất được chữ. Vui lòng thử file khác."}
+            return {"error": "Không trích xuất được chữ từ file này."}
 
-        prompt = f"Phân tích văn bản sau thành Markdown mindmap chi tiết: \n\n {text_data[:15000]}"
+        # CẤU HÌNH GỌI API TRỰC TIẾP (Bypass SDK lỗi)
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
         
-        # Gọi AI
-        response = model.generate_content(prompt)
-        return {"markdown": response.text.replace('```markdown', '').replace('```', '')}
+        payload = {
+            "contents": [{
+                "parts": [{
+                    "text": f"Bạn là VCA Smart Visualizer. Phân tích văn bản sau thành Markdown mindmap chi tiết (#, ##, -), trích xuất đủ số liệu: \n\n {text_data[:15000]}"
+                }]
+            }]
+        }
+
+        response = requests.post(url, json=payload)
+        res_data = response.json()
+
+        if response.status_code != 200:
+            return {"error": f"Lỗi từ Google ({response.status_code}): {res_data.get('error', {}).get('message', 'Không rõ lỗi')}"}
+
+        # Lấy nội dung Markdown trả về
+        markdown_out = res_data['candidates'][0]['content']['parts'][0]['text']
+        return {"markdown": markdown_out.replace('```markdown', '').replace('```', '')}
         
     except Exception as e:
-        logger.error(f"Lỗi xử lý AI: {str(e)}")
-        return {"error": str(e)}
+        return {"error": f"Lỗi hệ thống: {str(e)}"}
 
 @app.get("/")
 async def serve_frontend():
