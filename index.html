@@ -4,222 +4,153 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VCA Visualizer - Phòng TC-KH</title>
-<script src="https://cdn.jsdelivr.net/npm/markmap-autoloader@0.15.4"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script src="https://cdn.jsdelivr.net/npm/markmap-view"></script>
+<script src="https://cdn.jsdelivr.net/npm/markmap-lib@0.17.0/dist/browser/index.js"></script>
 <style>
-    /* Tổng thể App */
-    body { margin: 0; display: flex; height: 100vh; font-family: 'Segoe UI', sans-serif; background: #f5f7fa;}
-    
-    /* SIDEBAR BÊN TRÁI (Đã đổi vị trí) */
-    .right-sidebar { 
-        flex: 1; 
-        background: white; 
-        padding: 25px; 
-        display: flex; 
-        flex-direction: column; 
-        gap: 20px; 
-        box-shadow: 2px 0 5px rgba(0,0,0,0.05); /* Đổi hướng bóng đổ */
-        border-right: 2px solid #ddd;
-        z-index: 10;
-    }
-
-    /* KHUNG HIỂN THỊ SƠ ĐỒ BÊN PHẢI */
-    .left-panel { flex: 3; display: flex; flex-direction: column; position: relative; }
-    
-    .vca-header { background: #0056b3; color: white; padding: 12px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 4px solid #d4af37; }
-    .vca-title { font-size: 14px; font-weight: bold; text-transform: uppercase; }
-    .vca-subtitle { font-size: 11px; opacity: 0.8; }
-    
-    .btn-download { background: #d4af37; border: none; padding: 8px 15px; font-weight: bold; cursor: pointer; border-radius: 4px; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
-    .btn-download:hover { background: #e6c555; }
-    
-    .markmap-container { flex-grow: 1; width: 100%; overflow: hidden; }
-    .markmap { width: 100%; height: 100%; }
-
-    /* Cấu hình Sidebar */
-    .right-sidebar h3 { color: #0056b3; margin: 0; text-align: center; font-size: 18px; }
-    
-    /* Box Upload hỗ trợ Kéo - Thả */
-    .upload-box { 
-        border: 2px dashed #0056b3; 
-        padding: 40px 15px; 
-        text-align: center; 
-        border-radius: 8px; 
-        background: #f0f8ff; 
-        cursor: pointer; 
-        transition: all 0.2s; 
-    }
-    .upload-box.dragover { background: #d1e7ff; border-color: #002244; transform: scale(1.02); }
-    .upload-box p { margin: 0; color: #333; font-size: 14px; font-weight: bold; }
-    .upload-box span { font-size: 12px; color: #666; }
-    
-    .btn-action { background: #0056b3; color: white; padding: 14px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; width: 100%; font-size: 14px;}
+    body { margin: 0; display: flex; height: 100vh; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f5f7fa; overflow: hidden; }
+    .sidebar { flex: 1; min-width: 300px; max-width: 350px; background: white; padding: 20px; display: flex; flex-direction: column; gap: 15px; box-shadow: 2px 0 10px rgba(0,0,0,0.1); z-index: 100; border-right: 1px solid #ddd; }
+    .main-content { flex: 3; display: flex; flex-direction: column; background: #fff; position: relative; }
+    .vca-header { background: #0056b3; color: white; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 4px solid #d4af37; }
+    .vca-header h2 { margin: 0; font-size: 16px; text-transform: uppercase; line-height: 1.2; }
+    .vca-header span { font-size: 11px; opacity: 0.9; }
+    .upload-box { border: 2px dashed #0056b3; padding: 30px 10px; text-align: center; border-radius: 8px; background: #f0f8ff; cursor: pointer; transition: 0.3s; }
+    .upload-box:hover { background: #e1f0ff; border-color: #d4af37; }
+    .btn-action { background: #0056b3; color: white; padding: 12px; border: none; border-radius: 5px; font-weight: bold; cursor: pointer; font-size: 14px; }
     .btn-action:hover { background: #003d82; }
     .btn-action:disabled { background: #ccc; cursor: not-allowed; }
-    
-    #status { font-size: 13px; font-weight: bold; text-align: center; min-height: 40px; margin-top: 10px; }
+    .btn-download { background: #d4af37; color: #000; border: none; padding: 8px 15px; font-weight: bold; cursor: pointer; border-radius: 4px; font-size: 12px; }
+    #markmap-container { flex-grow: 1; width: 100%; height: 100%; background: #f8f9fa; }
+    #status { font-size: 13px; text-align: center; font-weight: bold; }
+    #fileName { font-size: 12px; color: #555; margin-top: 5px; word-break: break-all; }
 </style>
-<style>.markmap-node-text { font-family: 'Segoe UI'; font-size: 14px; fill: #333; }</style>
 </head>
 <body>
 
-    <div class="right-sidebar">
-        <h3>VCA SMART VISUALIZER</h3>
-        <p style="font-size: 12px; color: #555; text-align:center; margin-top:-10px;">Phòng Tài chính - Kế hoạch</p>
-        
-        <div class="upload-box" id="drop-zone" onclick="document.getElementById('fileInput').click()">
-            <p id="fileNameDisplay">Kéo thả file vào đây</p>
-            <span>Hoặc nhấn để chọn (PDF, DOCX, TXT)</span>
-            <input type="file" id="fileInput" style="display: none;" accept=".pdf,.doc,.docx,.txt">
-        </div>
-        
-        <button class="btn-action" id="btnGenerate" disabled onclick="processDocument()">TẠO SƠ ĐỒ MINDMAP</button>
-        <div id="status"></div>
+<div class="sidebar">
+    <div style="text-align: center; border-bottom: 1px solid #eee; padding-bottom: 10px;">
+        <h3 style="color: #0056b3; margin: 0;">VCA SMART VISUALIZER</h3>
+        <p style="font-size: 11px; color: #666; margin: 5px 0;">Trợ lý số hóa Phòng Tài chính - Kế hoạch</p>
     </div>
-
-    <div class="left-panel">
-        <div class="vca-header">
-            <div>
-                <div class="vca-subtitle">Tổng công ty Cảng hàng không Việt Nam - CTCP</div>
-                <div class="vca-title">Cảng HKQT Cần Thơ | Trợ lý Số hóa</div>
-            </div>
-            <button class="btn-download" onclick="downloadFullMindmap()">TẢI SƠ ĐỒ (FULL HD)</button>
-        </div>
-        <div class="markmap-container">
-            <svg id="markmap-render" class="markmap"></svg>
-        </div>
+    
+    <div class="upload-box" id="drop-zone" onclick="document.getElementById('fileInput').click()">
+        <p style="margin: 0; font-weight: bold; font-size: 14px;">Kéo thả file vào đây</p>
+        <p style="margin: 5px 0 0; font-size: 11px; color: #777;">Hỗ trợ PDF, DOCX, TXT</p>
+        <div id="fileName">Chưa chọn file</div>
+        <input type="file" id="fileInput" style="display: none;" accept=".pdf,.docx,.doc,.txt">
     </div>
+    
+    <button class="btn-action" id="btnGenerate" onclick="processFile()" disabled>TẠO SƠ ĐỒ MINDMAP</button>
+    <div id="status"></div>
+</div>
 
-    <script>
-        let selectedFile = null;
-        const dropZone = document.getElementById('drop-zone');
-        const fileInput = document.getElementById('fileInput');
-        const fileNameDisplay = document.getElementById('fileNameDisplay');
-        const btnGenerate = document.getElementById('btnGenerate');
-        const statusEl = document.getElementById('status');
+<div class="main-content">
+    <div class="vca-header">
+        <div>
+            <span>TỔNG CÔNG TY CẢNG HÀNG KHÔNG VIỆT NAM - CTCP</span>
+            <h2>Cảng HKQT Cần Thơ | Trợ lý Số hóa</h2>
+        </div>
+        <button class="btn-download" onclick="downloadImage()">TẢI ẢNH (PNG)</button>
+    </div>
+    <div id="markmap-container">
+        <svg id="markmap-svg" style="width: 100%; height: 100%"></svg>
+    </div>
+</div>
 
-        // --- XỬ LÝ KÉO THẢ (DRAG & DROP) ---
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
-            dropZone.addEventListener(eventName, e => {
-                e.preventDefault();
-                e.stopPropagation();
-            }, false);
-        });
+<script>
+    let selectedFile = null;
+    const { markmap } = window;
+    const { Transformer, Markmap } = markmap;
 
-        dropZone.addEventListener('dragover', () => dropZone.classList.add('dragover'));
-        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+    // Xử lý chọn file
+    document.getElementById('fileInput').onchange = (e) => {
+        selectedFile = e.target.files[0];
+        if (selectedFile) {
+            document.getElementById('fileName').innerText = selectedFile.name;
+            document.getElementById('btnGenerate').disabled = false;
+            document.getElementById('status').innerText = "File đã sẵn sàng!";
+            document.getElementById('status').style.color = "green";
+        }
+    };
 
-        dropZone.addEventListener('drop', (e) => {
-            dropZone.classList.remove('dragover');
-            const file = e.dataTransfer.files[0];
-            handleFile(file);
-        });
+    // Xử lý kéo thả
+    const dropZone = document.getElementById('drop-zone');
+    dropZone.ondragover = (e) => { e.preventDefault(); dropZone.style.background = "#e1f0ff"; };
+    dropZone.ondragleave = () => { dropZone.style.background = "#f0f8ff"; };
+    dropZone.ondrop = (e) => {
+        e.preventDefault();
+        dropZone.style.background = "#f0f8ff";
+        selectedFile = e.dataTransfer.files[0];
+        document.getElementById('fileName').innerText = selectedFile.name;
+        document.getElementById('btnGenerate').disabled = false;
+    };
 
-        fileInput.addEventListener('change', (e) => handleFile(e.target.files[0]));
+    // Hàm chính gửi file và vẽ map
+    async function processFile() {
+        const status = document.getElementById('status');
+        const btn = document.getElementById('btnGenerate');
+        
+        status.innerText = "Đang đọc và phân tích tài liệu...";
+        status.style.color = "blue";
+        btn.disabled = true;
 
-        function handleFile(file) {
-            if (!file) return;
-            const allowedTypes = ['.pdf', '.docx', '.doc', '.txt'];
-            const isAllowed = allowedTypes.some(ext => file.name.toLowerCase().endsWith(ext));
-            
-            if (!isAllowed) {
-                statusEl.innerText = "Lỗi: Chỉ hỗ trợ file PDF, Word, TXT";
-                statusEl.style.color = "red";
-                return;
+        const formData = new FormData();
+        formData.append("file", selectedFile);
+
+        try {
+            const response = await fetch('/api/generate', { method: 'POST', body: formData });
+            const data = await response.json();
+
+            if (data.markdown) {
+                renderMindmap(data.markdown);
+                status.innerText = "Hoàn thành thành công!";
+                status.style.color = "green";
+            } else {
+                status.innerText = "Lỗi: " + (data.error || "Không có dữ liệu");
+                status.style.color = "red";
             }
-
-            selectedFile = file;
-            fileNameDisplay.innerText = file.name;
-            statusEl.innerText = "Đã nhận file. Hãy nhấn Tạo sơ đồ!";
-            statusEl.style.color = "green";
-            btnGenerate.disabled = false;
+        } catch (err) {
+            status.innerText = "Lỗi kết nối máy chủ!";
+            status.style.color = "red";
+        } finally {
+            btn.disabled = false;
         }
+    }
 
-        // --- GỬI FILE LÊN MÁY CHỦ ---
-        async function processDocument() {
-            statusEl.innerHTML = "Đang kết nối AI...<br>(Vui lòng chờ 15-40 giây)";
-            statusEl.style.color = "blue";
-            btnGenerate.disabled = true;
+    // Hàm vẽ sơ đồ
+    function renderMindmap(markdown) {
+        const svg = document.querySelector('#markmap-svg');
+        svg.innerHTML = ''; // Xóa cái cũ
+        const transformer = new Transformer();
+        const { root } = transformer.transform(markdown);
+        Markmap.create(svg, {
+            autoFit: true,
+            padding: 20,
+            duration: 500,
+        }, root);
+    }
 
-            const formData = new FormData();
-            formData.append("file", selectedFile);
-
-            try {
-                // Gọi tới backend trên cùng domain
-                const response = await fetch("/api/generate", {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Mã lỗi: ${response.status}`);
-                }
-
-                const data = await response.json();
-                
-                if (data.error) {
-                    statusEl.innerText = "Lỗi từ AI: " + data.error;
-                    statusEl.style.color = "red";
-                } else {
-                    renderMindmap(data.markdown);
-                    statusEl.innerText = "Hoàn thành!";
-                    statusEl.style.color = "green";
-                }
-            } catch (error) {
-                console.error(error);
-                statusEl.innerHTML = "Lỗi kết nối máy chủ!<br><small>Có thể do máy chủ đang khởi động hoặc file quá lớn. Vui lòng thử lại sau 30 giây.</small>";
-                statusEl.style.color = "red";
-            } finally {
-                btnGenerate.disabled = false;
-            }
-        }
-
-        // --- CÁC HÀM CƠ BẢN (RENDER & DOWNLOAD) ---
-        function renderMindmap(markdown) {
-            const { Transformer, Markmap } = window.markmap;
-            const transformer = new Transformer();
-            const { root } = transformer.transform(markdown);
-            const svgEl = document.querySelector('#markmap-render');
-            svgEl.innerHTML = '';
-            Markmap.create(svgEl, null, root);
-        }
-
-        function downloadFullMindmap() {
-            const svg = document.querySelector('#markmap-render');
-            const g = svg.querySelector('g');
-            if (!g) return alert("Chưa có sơ đồ để tải!");
-            const bbox = g.getBBox();
-            const padding = 60;
-            const clone = svg.cloneNode(true);
-            const cloneG = clone.querySelector('g');
-            cloneG.setAttribute('transform', '');
-            const width = bbox.width + padding * 2;
-            const height = bbox.height + padding * 2;
-            clone.setAttribute('viewBox', `${bbox.x - padding} ${bbox.y - padding} ${width} ${height}`);
-            const scale = 3;
-            clone.setAttribute('width', width * scale);
-            clone.setAttribute('height', height * scale);
-            const bg = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-            bg.setAttribute('x', bbox.x - padding); bg.setAttribute('y', bbox.y - padding);
-            bg.setAttribute('width', width); bg.setAttribute('height', height);
-            bg.setAttribute('fill', '#f5f7fa');
-            clone.insertBefore(bg, clone.firstChild);
-            const style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
-            style.textContent = ".markmap-node-text { font-family: 'Segoe UI', Arial, sans-serif; font-size: 14px; fill: #333; } path { fill: none; }";
-            clone.insertBefore(style, clone.firstChild);
-            const svgData = new XMLSerializer().serializeToString(clone);
-            const img = new Image();
-            img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
-            img.onload = () => {
-                const canvas = document.createElement('canvas');
-                canvas.width = width * scale; canvas.height = height * scale;
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0);
-                const a = document.createElement('a');
-                a.download = 'VCA_Mindmap.png';
-                a.href = canvas.toDataURL('image/png');
-                a.click();
-            };
-        }
-    </script>
+    // Hàm tải ảnh sơ đồ
+    function downloadImage() {
+        const svg = document.querySelector('#markmap-svg');
+        const serializer = new XMLSerializer();
+        const source = '<?xml version="1.0" standalone="no"?>\r\n' + serializer.serializeToString(svg);
+        const canvas = document.createElement("canvas");
+        const ctx = canvas.getContext("2d");
+        const img = new Image();
+        img.src = "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(source)));
+        img.onload = function() {
+            canvas.width = img.width * 2;
+            canvas.height = img.height * 2;
+            ctx.fillStyle = "white";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+            const a = document.createElement("a");
+            a.download = "VCA_Mindmap.png";
+            a.href = canvas.toDataURL("image/png");
+            a.click();
+        };
+    }
+</script>
 </body>
 </html>
