@@ -33,20 +33,15 @@ async def generate_mindmap(file: UploadFile = File(...)):
     text_data = await extract_text(file)
     if not text_data.strip(): return {"error": "File không có nội dung chữ hoặc định dạng không hỗ trợ."}
 
-    # SỬ DỤNG ENDPOINT V1BETA CHO GEMINI 1.5 FLASH (ỔN ĐỊNH NHẤT CHO PAID TIER)
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+    # SỬ DỤNG CỔNG V1 CHÍNH THỨC (STABLE) - DÀNH CHO PAID TIER
+    url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={API_KEY}"
     
     payload = {
         "contents": [{
             "parts": [{
-                "text": f"Bạn là VCA Smart Visualizer. Hãy bóc tách chi tiết văn bản sau thành Markdown mindmap phân cấp sâu (#, ##, ###, -, v.v.) để làm sơ đồ. Giữ nguyên các số liệu tài chính quan trọng. Chỉ trả về Markdown, không giải thích.\n\nNội dung:\n{text_data[:15000]}"
+                "text": f"Bạn là VCA Smart Visualizer. Phân tích văn bản sau thành Mindmap Markdown chi tiết (#, ##, -). Trích xuất đủ số liệu tài chính: \n\n {text_data[:15000]}"
             }]
-        }],
-        "generationConfig": {
-            "temperature": 0.2,
-            "topP": 0.8,
-            "topK": 40
-        }
+        }]
     }
 
     try:
@@ -57,15 +52,15 @@ async def generate_mindmap(file: UploadFile = File(...)):
             markdown_out = res_data['candidates'][0]['content']['parts'][0]['text']
             return {"markdown": markdown_out.replace('```markdown', '').replace('```', '')}
         else:
-            # Nếu vẫn lỗi, thử cổng v1 chính thức với cùng model
-            url_v1 = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={API_KEY}"
-            response_v1 = requests.post(url_v1, json=payload, timeout=60)
-            if response_v1.status_code == 200:
-                markdown_out = response_v1.json()['candidates'][0]['content']['parts'][0]['text']
+            # Nếu v1 vẫn lỗi, thử cổng v1beta như một phương án dự phòng cuối cùng
+            url_beta = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={API_KEY}"
+            response_beta = requests.post(url_beta, json=payload, timeout=60)
+            if response_beta.status_code == 200:
+                markdown_out = response_beta.json()['candidates'][0]['content']['parts'][0]['text']
                 return {"markdown": markdown_out.replace('```markdown', '').replace('```', '')}
             
-            error_msg = res_data.get('error', {}).get('message', f"Lỗi {response.status_code}")
-            return {"error": f"AI phản hồi lỗi: {error_msg}"}
+            error_msg = res_data.get('error', {}).get('message', '404 Not Found')
+            return {"error": f"AI phản hồi: {error_msg} (Vui lòng kiểm tra lại API Key trong Cloud Console)"}
             
     except Exception as e:
         return {"error": f"Lỗi kết nối: {str(e)}"}
