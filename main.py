@@ -9,72 +9,61 @@ import docx
 from dotenv import load_dotenv
 
 load_dotenv()
-
 API_KEY = os.getenv("GEMINI_API_KEY")
 
 app = FastAPI()
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 async def extract_text(file: UploadFile):
-    ext = file.filename.split('.')[-1].lower()
     content = await file.read()
     text = ""
     try:
-        if ext == "txt":
-            text = content.decode('utf-8')
+        ext = file.filename.split('.')[-1].lower()
+        if ext == "txt": text = content.decode('utf-8')
         elif ext == "pdf":
             with pdfplumber.open(io.BytesIO(content)) as pdf:
                 text = "\n".join([page.extract_text() or "" for page in pdf.pages])
         elif ext in ["doc", "docx"]:
             doc = docx.Document(io.BytesIO(content))
-            text = "\n".join([para.text for para in doc.paragraphs])
+            text = "\n".join([p.text for p in doc.paragraphs])
         return text
-    except Exception:
-        return ""
+    except: return ""
 
 @app.post("/api/generate")
 async def generate_mindmap(file: UploadFile = File(...)):
-    try:
-        text_data = await extract_text(file)
-        if not text_data.strip():
-            return {"error": "Không trích xuất được văn bản từ file."}
+    text_data = await extract_text(file)
+    if not text_data.strip(): return {"error": "File không có nội dung chữ."}
 
-        # --- THAY ĐỔI QUAN TRỌNG: DÙNG V1 THAY VÌ V1BETA ---
-        # Thử model Flash trên bản v1 chính thức
-        url = f"https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key={API_KEY}"
-        
-        payload = {
-            "contents": [{
-                "parts": [{
-                    "text": f"Bạn là VCA Smart Visualizer. Phân tích văn bản sau thành Markdown mindmap chi tiết (#, ##, -), trích xuất đủ số liệu tài chính: \n\n {text_data[:15000]}"
-                }]
-            }]
-        }
+    # DANH SÁCH CÁC CỬA NGÕ (ĐỀ PHÒNG GOOGLE KHÓA)
+    # Chúng ta thử v1 trước (cho Paid Tier), sau đó mới thử v1beta
+    endpoints = [
+        "https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent",
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent",
+        "https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent"
+    ]
 
-        response = requests.post(url, json=payload)
-        res_data = response.json()
+    payload = {
+        "contents": [{"parts": [{"text": f"Phân tích văn bản này thành Mindmap Markdown chi tiết: \n\n {text_data[:12000]}"}]}]
+    }
 
-        # Nếu v1 vẫn báo lỗi, tự động thử sang bản gemini-pro (vốn cực kỳ ổn định)
-        if response.status_code != 200:
-            url_fallback = f"https://generativelanguage.googleapis.com/v1/models/gemini-pro:generateContent?key={API_KEY}"
-            response = requests.post(url_fallback, json=payload)
+    last_error = "Không thể kết nối với Google AI"
+
+    for url in endpoints:
+        try:
+            full_url = f"{url}?key={API_KEY}"
+            response = requests.post(full_url, json=payload, timeout=30)
             res_data = response.json()
+            
+            if response.status_code == 200:
+                markdown_out = res_data['candidates'][0]['content']['parts'][0]['text']
+                return {"markdown": markdown_out.replace('```markdown', '').replace('```', '')}
+            else:
+                last_error = res_data.get('error', {}).get('message', f"Lỗi {response.status_code}")
+        except Exception as e:
+            last_error = str(e)
+            continue
 
-        if response.status_code != 200:
-            return {"error": f"Lỗi Google: {res_data.get('error', {}).get('message', '404 Not Found')}"}
-
-        markdown_out = res_data['candidates'][0]['content']['parts'][0]['text']
-        return {"markdown": markdown_out.replace('```markdown', '').replace('```', '')}
-        
-    except Exception as e:
-        return {"error": f"Lỗi hệ thống: {str(e)}"}
+    return {"error": f"Tất cả cửa ngõ đều bị từ chối: {last_error}"}
 
 @app.get("/")
 async def serve_frontend():
